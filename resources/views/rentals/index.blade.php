@@ -123,16 +123,17 @@
                             </thead>
                             <tbody>
                                 @foreach($recent_rentals as $rental)
+                                    @if($rental->customer && $rental->inventory && $rental->inventory->film && $rental->staff)
                                     <tr>
                                         <td>
                                             <strong>#{{ $rental->rental_id }}</strong>
                                         </td>
-                                        <td>{{ $rental->customer->full_name }}</td>
+                                        <td>{{ $rental->customer->first_name }} {{ $rental->customer->last_name }}</td>
                                         <td>
                                             <strong>{{ $rental->inventory->film->title }}</strong>
                                         </td>
                                         <td>{{ $rental->rental_date->format('d/m/Y H:i') }}</td>
-                                        <td>{{ $rental->staff->full_name }}</td>
+                                        <td>{{ $rental->staff->first_name }} {{ $rental->staff->last_name }}</td>
                                         <td>
                                             @if($rental->isActive())
                                                 @if($rental->isOverdue())
@@ -151,6 +152,7 @@
                                             </a>
                                         </td>
                                     </tr>
+                                    @endif
                                 @endforeach
                             </tbody>
                         </table>

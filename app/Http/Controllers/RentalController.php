@@ -29,6 +29,9 @@ class RentalController extends Controller
         ];
 
         $recent_rentals = Rental::with(['customer', 'inventory.film', 'staff'])
+            ->whereHas('customer')
+            ->whereHas('inventory.film')
+            ->whereHas('staff')
             ->latest('rental_date')
             ->take(10)
             ->get();
