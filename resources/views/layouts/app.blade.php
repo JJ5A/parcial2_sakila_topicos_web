@@ -3,90 +3,130 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@yield('title', 'Sakila - Base de Datos de Películas')</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>@yield('title', 'Sakila - Sistema de Rentas')</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     @stack('styles')
 </head>
 <body>
+    @auth
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
             <a class="navbar-brand" href="{{ route('rentals.index') }}">
-                <i class="fas fa-film me-2"></i>Sakila DB
+                <i class="fas fa-film me-2"></i>Sakila Sistema
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link {{ request()->routeIs('rentals.*') ? 'active' : '' }}" href="{{ route('rentals.index') }}">
+                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                        </a>
+                    </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="rentalsDropdown" role="button" data-bs-toggle="dropdown">
+                        <a class="nav-link dropdown-toggle {{ request()->routeIs('rentals.*') ? 'active' : '' }}" href="#" id="rentalsDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="fas fa-handshake me-1"></i>Rentas
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ route('rentals.index') }}">
-                                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ route('rentals.create') }}">
-                                <i class="fas fa-plus me-1"></i>Nueva Renta
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ route('rentals.return') }}">
-                                <i class="fas fa-undo me-1"></i>Procesar Devolución
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ route('rentals.overdue') }}">
-                                <i class="fas fa-exclamation-triangle me-1 text-danger"></i>Rentas Atrasadas
-                            </a></li>
+                            <li><a class="dropdown-item" href="{{ route('rentals.create') }}"><i class="fas fa-plus me-2"></i>Nueva Renta</a></li>
+                            <li><a class="dropdown-item" href="{{ route('rentals.active') }}"><i class="fas fa-play me-2"></i>Rentas Activas</a></li>
+                            <li><a class="dropdown-item" href="{{ route('rentals.return') }}"><i class="fas fa-undo me-2"></i>Procesar Devolución</a></li>
+                            <li><a class="dropdown-item" href="{{ route('rentals.overdue') }}"><i class="fas fa-exclamation-triangle me-2"></i>Rentas Atrasadas</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="filmsDropdown" role="button" data-bs-toggle="dropdown">
+                        <a class="nav-link dropdown-toggle {{ request()->routeIs('films.*') ? 'active' : '' }}" href="#" id="filmsDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="fas fa-film me-1"></i>Películas
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ route('films.index') }}">
-                                <i class="fas fa-list me-1"></i>Lista de Películas
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ route('films.create') }}">
-                                <i class="fas fa-plus me-1"></i>Nueva Película
-                            </a></li>
+                            <li><a class="dropdown-item" href="{{ route('films.index') }}"><i class="fas fa-list me-2"></i>Ver Todas</a></li>
+                            <li><a class="dropdown-item" href="{{ route('films.available') }}"><i class="fas fa-check-circle me-2"></i>Disponibles</a></li>
+                            <li><a class="dropdown-item" href="{{ route('films.create') }}"><i class="fas fa-plus me-2"></i>Agregar Película</a></li>
                         </ul>
                     </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="actorsDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-users me-1"></i>Actores
+                    <li class="nav-item">
+                        <a class="nav-link {{ request()->routeIs('customers.*') ? 'active' : '' }}" href="{{ route('customers.index') }}">
+                            <i class="fas fa-users me-1"></i>Clientes
                         </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ route('actors.index') }}">
-                                <i class="fas fa-list me-1"></i>Lista de Actores
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ route('actors.create') }}">
-                                <i class="fas fa-plus me-1"></i>Nuevo Actor
-                            </a></li>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ request()->routeIs('actors.*') ? 'active' : '' }}" href="{{ route('actors.index') }}">
+                            <i class="fas fa-user-tie me-1"></i>Actores
+                        </a>
+                    </li>
+                </ul>
+                
+                <!-- Información del usuario -->
+                <ul class="navbar-nav">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
+                            <div class="user-avatar me-2">
+                                @if(auth()->user()->picture)
+                                    <img src="data:image/jpeg;base64,{{ base64_encode(auth()->user()->picture) }}" 
+                                         alt="Avatar" class="rounded-circle" width="32" height="32">
+                                @else
+                                    <div class="avatar-placeholder rounded-circle d-flex align-items-center justify-content-center" 
+                                         style="width: 32px; height: 32px; background: #6c757d; color: white; font-size: 14px;">
+                                        {{ substr(auth()->user()->first_name, 0, 1) }}{{ substr(auth()->user()->last_name, 0, 1) }}
+                                    </div>
+                                @endif
+                            </div>
+                            <div class="user-info">
+                                <div class="fw-bold">{{ auth()->user()->full_name }}</div>
+                                <small class="text-muted">Tienda #{{ auth()->user()->store_id }}</small>
+                            </div>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <div class="dropdown-header">
+                                    <strong>{{ auth()->user()->full_name }}</strong><br>
+                                    <small class="text-muted">{{ auth()->user()->email }}</small>
+                                </div>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#"><i class="fas fa-user me-2"></i>Mi Perfil</a></li>
+                            <li><a class="dropdown-item" href="#"><i class="fas fa-cog me-2"></i>Configuración</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item text-danger" href="#" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
+                                    <i class="fas fa-sign-out-alt me-2"></i>Cerrar Sesión
+                                </a>
+                                <form id="logout-form" action="{{ route('logout') }}" method="POST" class="d-none">
+                                    @csrf
+                                </form>
+                            </li>
                         </ul>
                     </li>
                 </ul>
             </div>
         </div>
     </nav>
+    @endauth
 
-    <div class="container mt-4">
+    <main class="@guest container-fluid @else pt-4 @endguest">
         @if(session('success'))
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                <i class="fas fa-check-circle me-2"></i>{{ session('success') }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <div class="container">
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <i class="fas fa-check-circle me-2"></i>{{ session('success') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
             </div>
         @endif
 
         @if(session('error'))
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                <i class="fas fa-exclamation-circle me-2"></i>{{ session('error') }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <div class="container">
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <i class="fas fa-exclamation-circle me-2"></i>{{ session('error') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
             </div>
         @endif
 
         @yield('content')
-    </div>
+    </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     @stack('scripts')

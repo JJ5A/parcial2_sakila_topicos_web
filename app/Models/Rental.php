@@ -112,6 +112,15 @@ class Rental extends Model
         $rentalDuration = $this->inventory->film->rental_duration ?? 3;
         return $this->rental_date->addDays($rentalDuration);
     }
+
+    /**
+     * Obtener fecha esperada de devolución
+     */
+    public function getExpectedReturnDateAttribute()
+    {
+        $rentalDuration = $this->inventory->film->rental_duration ?? 3;
+        return $this->rental_date->copy()->addDays($rentalDuration);
+    }
     
     /**
      * Scope para rentas activas

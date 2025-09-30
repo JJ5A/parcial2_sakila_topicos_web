@@ -119,8 +119,7 @@ class Film extends Model
      */
     public function categories()
     {
-        return $this->belongsToMany(Category::class, 'film_category', 'film_id', 'category_id')
-            ->withTimestamps();
+        return $this->belongsToMany(Category::class, 'film_category', 'film_id', 'category_id');
     }
     
     /**
@@ -129,6 +128,44 @@ class Film extends Model
     public function filmText()
     {
         return $this->hasOne(FilmText::class, 'film_id');
+    }
+
+    /**
+     * Scope para obtener películas disponibles
+     */
+    public function scopeAvailable($query)
+    {
+        return $query->whereHas('inventory', function($q) {
+            $q->whereNotExists(function($subQuery) {
+                $subQuery->select(\DB::raw(1))
+                    ->from('rental')
+                    ->whereColumn('rental.inventory_id', 'inventory.inventory_id')
+                    ->whereNull('rental.return_date');
+            });
+        });
+    }
+
+    /**
+     * Obtener número de copias disponibles
+     */
+    public function getAvailableCopiesAttribute()
+    {
+        return $this->inventory()
+            ->whereNotExists(function($query) {
+                $query->select(\DB::raw(1))
+                    ->from('rental')
+                    ->whereColumn('rental.inventory_id', 'inventory.inventory_id')
+                    ->whereNull('rental.return_date');
+            })
+            ->count();
+    }
+
+    /**
+     * Obtener número total de copias
+     */
+    public function getTotalCopiesAttribute()
+    {
+        return $this->inventory()->count();
     }
     
     /**

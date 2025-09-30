@@ -4,12 +4,67 @@ namespace App\Http\Controllers;
 
 use App\Models\Film;
 use App\Models\Language;
+use App\Models\Inventory;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 
 class FilmController extends Controller
 {
+    /**
+     * Display available films for rental
+     */
+    public function available(Request $request): View
+    {
+        $query = Film::with(['language', 'originalLanguage']);
+        
+        // Búsqueda por título
+        if ($request->filled('search')) {
+            $query->where('title', 'like', '%' . $request->search . '%');
+        }
+        
+        // Filtro por rating
+        if ($request->filled('rating')) {
+            $query->where('rating', $request->rating);
+        }
+        
+        // Filtro por categoría
+        if ($request->filled('category')) {
+            $query->whereHas('categories', function($q) use ($request) {
+                $q->where('category_id', $request->category);
+            });
+        }
+        
+        // Obtener todas las películas
+        $allFilms = $query->orderBy('title')->get();
+        
+        // Filtrar solo las que tienen inventario disponible
+        $films = $allFilms->map(function($film) {
+            $totalCopies = Inventory::where('film_id', $film->film_id)->count();
+            $rentedCopies = DB::table('rental')
+                ->join('inventory', 'rental.inventory_id', '=', 'inventory.inventory_id')
+                ->where('inventory.film_id', $film->film_id)
+                ->whereNull('rental.return_date')
+                ->count();
+            
+            $availableCopies = $totalCopies - $rentedCopies;
+            
+            $film->available_copies = $availableCopies;
+            $film->total_copies = $totalCopies;
+            
+            return $film;
+        })->filter(function($film) {
+            return $film->total_copies > 0 && $film->available_copies > 0;
+        });
+        
+        // Datos para filtros
+        $ratings = Film::getRatings();
+        $categories = DB::table('category')->orderBy('name')->get();
+        
+        return view('films.available', compact('films', 'ratings', 'categories'));
+    }
+
     /**
      * Display a listing of the resource.
      */
