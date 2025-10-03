@@ -66,11 +66,16 @@ class CustomerController extends Controller
         
         // Historial de rentas
         $rentals = Rental::with(['inventory.film', 'staff', 'payment'])
+            ->whereHas('inventory.film') // Solo rentas con inventario y película válidos
             ->where('customer_id', $customer->customer_id)
             ->orderBy('rental_date', 'desc')
             ->paginate(10);
         
         // Estadísticas del cliente
+        $lastRental = Rental::where('customer_id', $customer->customer_id)
+                           ->latest('rental_date')
+                           ->first();
+        
         $customerStats = [
             'total_rentals' => Rental::where('customer_id', $customer->customer_id)->count(),
             'active_rentals' => Rental::where('customer_id', $customer->customer_id)
@@ -83,9 +88,7 @@ class CustomerController extends Controller
             'total_payments' => DB::table('payment')
                                  ->where('customer_id', $customer->customer_id)
                                  ->sum('amount'),
-            'last_rental' => Rental::where('customer_id', $customer->customer_id)
-                                  ->latest('rental_date')
-                                  ->first()?->rental_date,
+            'last_rental' => $lastRental ? $lastRental->rental_date : null,
         ];
         
         // Películas más rentadas por este cliente
@@ -100,5 +103,38 @@ class CustomerController extends Controller
             ->get();
         
         return view('customers.show', compact('customer', 'rentals', 'customerStats', 'favoriteFilms'));
+    }
+
+    /**
+     * Search customers for AJAX requests
+     */
+    public function search(Request $request)
+    {
+        if (!$request->has('q')) {
+            return response()->json(['customers' => []]);
+        }
+
+        $searchTerm = $request->q;
+        
+        $customers = Customer::where(function($query) use ($searchTerm) {
+                $query->where('first_name', 'LIKE', "%{$searchTerm}%")
+                      ->orWhere('last_name', 'LIKE', "%{$searchTerm}%")
+                      ->orWhere('email', 'LIKE', "%{$searchTerm}%");
+            })
+            ->where('active', true) // Solo clientes activos para rentas
+            ->limit(10)
+            ->get()
+            ->map(function($customer) {
+                return [
+                    'customer_id' => $customer->customer_id,
+                    'first_name' => $customer->first_name,
+                    'last_name' => $customer->last_name,
+                    'email' => $customer->email,
+                    'active' => $customer->active,
+                    'full_name' => $customer->first_name . ' ' . $customer->last_name
+                ];
+            });
+
+        return response()->json(['customers' => $customers]);
     }
 }

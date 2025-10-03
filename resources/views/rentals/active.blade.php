@@ -174,7 +174,7 @@
                                             <td class="text-center">
                                                 @if($isOverdue)
                                                     <span class="badge bg-danger">
-                                                        {{ abs($daysRemaining) }} día(s) atrasado
+                                                        {{ abs(round($daysRemaining)) }} día(s) atrasado
                                                     </span>
                                                 @elseif($isDueToday)
                                                     <span class="badge bg-warning">
@@ -186,7 +186,7 @@
                                                     </span>
                                                 @else
                                                     <span class="badge bg-success">
-                                                        {{ $daysRemaining }} día(s)
+                                                        {{ round($daysRemaining) }} día(s)
                                                     </span>
                                                 @endif
                                             </td>
@@ -331,6 +331,13 @@ function confirmReturn() {
             tokenInput.value = csrfToken.getAttribute('content');
             form.appendChild(tokenInput);
         }
+        
+        // Agregar campo para indicar que es devolución directa
+        const quickReturnInput = document.createElement('input');
+        quickReturnInput.type = 'hidden';
+        quickReturnInput.name = 'quick_return';
+        quickReturnInput.value = '1';
+        form.appendChild(quickReturnInput);
         
         document.body.appendChild(form);
         form.submit();

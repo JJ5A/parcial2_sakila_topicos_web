@@ -15,11 +15,8 @@
                     <p class="text-muted">Resumen completo del estado actual</p>
                 </div>
                 <div class="btn-group">
-                    <a href="{{ route('rentals.create') }}" class="btn btn-primary">
+                                        <a href="{{ route('rentals.create') }}" class="btn btn-primary">
                         <i class="fas fa-plus me-1"></i>Nueva Renta
-                    </a>
-                    <a href="{{ route('rentals.return') }}" class="btn btn-success">
-                        <i class="fas fa-undo me-1"></i>Procesar Devolución
                     </a>
                     <a href="{{ route('films.available') }}" class="btn btn-info">
                         <i class="fas fa-film me-1"></i>Ver Disponibles
@@ -324,11 +321,7 @@
                                                         <i class="fas fa-eye"></i>
                                                     </a>
                                                     @if($rental->isActive())
-                                                    <button class="btn btn-sm btn-outline-success quick-return-btn"
-                                                            data-rental-id="{{ $rental->rental_id }}"
-                                                            title="Devolución rápida">
-                                                        <i class="fas fa-undo"></i>
-                                                    </button>
+                                                        <span class="badge bg-warning">Activa</span>
                                                     @endif
                                                 </div>
                                             </td>
@@ -374,134 +367,10 @@
 }
 </style>
 
-<!-- Modal para confirmación de devolución -->
-<div class="modal fade" id="returnModal" tabindex="-1" aria-labelledby="returnModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="returnModalLabel">Confirmar Devolución</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p>¿Está seguro de que desea procesar la devolución de esta renta?</p>
-                <div id="returnDetails"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-success" id="confirmReturn">Confirmar Devolución</button>
-            </div>
-        </div>
-    </div>
-</div>
+@push('scripts')
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Manejar devolución rápida
-    document.querySelectorAll('.quick-return-btn').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            const rentalId = this.dataset.rentalId;
-            
-            // Obtener detalles de la renta antes de mostrar el modal
-            fetch(`/rentals/${rentalId}/calculate-return`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        showAlert(data.error, 'danger');
-                        return;
-                    }
-                    
-                    let detailsHtml = `
-                        <div class="row">
-                            <div class="col-sm-6"><strong>Cliente:</strong></div>
-                            <div class="col-sm-6">${data.customer_name}</div>
-                        </div>
-                        <div class="row">
-                            <div class="col-sm-6"><strong>Película:</strong></div>
-                            <div class="col-sm-6">${data.film_title}</div>
-                        </div>
-                        <div class="row">
-                            <div class="col-sm-6"><strong>Fecha de renta:</strong></div>
-                            <div class="col-sm-6">${data.rental_date}</div>
-                        </div>
-                        <div class="row">
-                            <div class="col-sm-6"><strong>Fecha esperada:</strong></div>
-                            <div class="col-sm-6">${data.expected_return_date}</div>
-                        </div>
-                    `;
-                    
-                    if (data.is_overdue) {
-                        detailsHtml += `
-                            <hr>
-                            <div class="alert alert-warning">
-                                <strong><i class="fas fa-exclamation-triangle"></i> Renta Atrasada</strong><br>
-                                Días de atraso: ${data.days_overdue}<br>
-                                Multa por atraso: <strong>$${data.overdue_fee.toFixed(2)}</strong>
-                            </div>
-                        `;
-                    } else {
-                        detailsHtml += `
-                            <hr>
-                            <div class="alert alert-success">
-                                <i class="fas fa-check-circle"></i> La devolución está a tiempo.
-                            </div>
-                        `;
-                    }
-                    
-                    document.getElementById('returnDetails').innerHTML = detailsHtml;
-                    
-                    document.getElementById('confirmReturn').onclick = function() {
-                        processQuickReturn(rentalId);
-                    };
-                    
-                    new bootstrap.Modal(document.getElementById('returnModal')).show();
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showAlert('Error al obtener detalles de la renta', 'danger');
-                });
-        });
-    });
-    
-    function processQuickReturn(rentalId) {
-        fetch(`/rentals/${rentalId}/quick-return`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-            },
-            body: JSON.stringify({
-                rental_id: rentalId
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Cerrar modal
-                bootstrap.Modal.getInstance(document.getElementById('returnModal')).hide();
-                
-                // Mostrar mensaje de éxito
-                let message = data.message;
-                if (data.was_overdue && data.overdue_fee > 0) {
-                    message += ` Se aplicó una multa de $${data.overdue_fee.toFixed(2)} por atraso.`;
-                }
-                
-                showAlert(message, 'success');
-                
-                // Recargar la página después de 2 segundos
-                setTimeout(() => {
-                    window.location.reload();
-                }, 2000);
-            } else {
-                showAlert(data.error || 'Error al procesar la devolución', 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showAlert('Error de conexión al procesar la devolución', 'danger');
-        });
-    }
-    
     function showAlert(message, type) {
         const alertDiv = document.createElement('div');
         alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;

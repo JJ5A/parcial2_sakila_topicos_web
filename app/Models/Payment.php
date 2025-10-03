@@ -22,13 +22,9 @@ class Payment extends Model
         'last_update'
     ];
     
-    protected $dates = [
-        'payment_date',
-        'last_update'
-    ];
-    
     protected $casts = [
         'payment_date' => 'datetime',
+        'last_update' => 'datetime',
         'amount' => 'decimal:2',
         'payment_id' => 'integer',
         'customer_id' => 'integer',

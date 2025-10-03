@@ -108,12 +108,12 @@
                                     <tr class="{{ $rental->days_overdue > 30 ? 'table-danger' : ($rental->days_overdue > 7 ? 'table-warning' : '') }}">
                                         <td><strong>{{ $rental->rental_id }}</strong></td>
                                         <td>
-                                            <div>{{ $rental->customer->formatted_name }}</div>
-                                            <small class="text-muted">{{ $rental->customer->email }}</small>
+                                            <div>{{ $rental->customer ? $rental->customer->formatted_name : 'Cliente no encontrado' }}</div>
+                                            <small class="text-muted">{{ $rental->customer ? $rental->customer->email : 'N/A' }}</small>
                                         </td>
                                         <td>
                                             <div class="fw-bold">{{ $rental->inventory->film->title }}</div>
-                                            <small class="text-muted">{{ $rental->inventory->film->category ?? 'N/A' }}</small>
+                                            <small class="text-muted">{{ $rental->inventory->film->categories->first()->name ?? 'N/A' }}</small>
                                         </td>
                                         <td>{{ $rental->rental_date->format('d/m/Y H:i') }}</td>
                                         <td>
@@ -130,14 +130,6 @@
                                         <td>{{ $rental->inventory->store_id }}</td>
                                         <td>
                                             <div class="btn-group btn-group-sm" role="group">
-                                                <button type="button" 
-                                                        class="btn btn-outline-primary return-btn" 
-                                                        data-rental-id="{{ $rental->rental_id }}"
-                                                        data-bs-toggle="modal" 
-                                                        data-bs-target="#returnModal"
-                                                        title="Procesar Devolución">
-                                                    <i class="fas fa-undo"></i>
-                                                </button>
                                                 <button type="button" 
                                                         class="btn btn-outline-info contact-btn" 
                                                         data-customer-id="{{ $rental->customer->customer_id }}"
@@ -268,50 +260,10 @@
     </div>
 </div>
 
-<!-- Modal de Devolución (reutilizar del return.blade.php) -->
-<div class="modal fade" id="returnModal" tabindex="-1" aria-labelledby="returnModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form id="returnForm" method="POST">
-                @csrf
-                <div class="modal-header">
-                    <h5 class="modal-title" id="returnModalLabel">
-                        <i class="fas fa-undo me-2"></i>Procesar Devolución
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="return_details">
-                        <!-- Los detalles se cargarán aquí via AJAX -->
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="staff_id_return" class="form-label">Empleado que Procesa *</label>
-                        <select class="form-select" id="staff_id_return" name="staff_id" required>
-                            <option value="">Seleccionar empleado...</option>
-                            @foreach($staff as $employee)
-                                <option value="{{ $employee->staff_id }}">{{ $employee->full_name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="damaged_return" name="damaged">
-                        <label class="form-check-label" for="damaged_return">
-                            La película fue devuelta con daños
-                        </label>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-check me-1"></i>Procesar Devolución
-                    </button>
-                </div>
-            </form>
-        </div>
     </div>
 </div>
+
+@push('scripts'>
 
 @push('scripts')
 <script>
@@ -322,12 +274,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const button = e.target.classList.contains('contact-btn') ? e.target : e.target.closest('.contact-btn');
             const customerId = button.getAttribute('data-customer-id');
             loadContactDetails(customerId);
-        }
-
-        if (e.target.classList.contains('return-btn') || e.target.closest('.return-btn')) {
-            const button = e.target.classList.contains('return-btn') ? e.target : e.target.closest('.return-btn');
-            const rentalId = button.getAttribute('data-rental-id');
-            loadReturnDetails(rentalId);
         }
     });
 
@@ -356,38 +302,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
             `;
-        }, 500);
-    }
-
-    function loadReturnDetails(rentalId) {
-        const returnDetails = document.getElementById('return_details');
-        const returnForm = document.getElementById('returnForm');
-        
-        returnDetails.innerHTML = `
-            <div class="text-center">
-                <div class="spinner-border" role="status">
-                    <span class="visually-hidden">Cargando...</span>
-                </div>
-            </div>
-        `;
-        
-        // En una implementación real, esto sería una llamada AJAX
-        setTimeout(() => {
-            returnDetails.innerHTML = `
-                <div class="alert alert-warning">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    Esta renta está atrasada. Se aplicarán cargos adicionales.
-                </div>
-                <div class="card">
-                    <div class="card-body">
-                        <h6 class="card-title">Detalles de la Renta</h6>
-                        <p><strong>ID:</strong> ${rentalId}</p>
-                        <p><strong>Días de atraso:</strong> <span class="text-danger">X días</span></p>
-                    </div>
-                </div>
-            `;
-            
-            returnForm.action = `{{ url('rentals') }}/${rentalId}/return`;
         }, 500);
     }
 });

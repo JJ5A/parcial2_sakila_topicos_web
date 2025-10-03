@@ -1,48 +1,271 @@
 @extends('layouts.app')
 
-@section('title', 'Procesar Devolución - Sakila')
+@section('title', 'Procesar Devoluciones')
 
 @section('content')
-<div class="row justify-content-center">
-    <div class="col-md-10">
-        <div class="card">
-            <div class="card-header">
-                <h4 class="mb-0">
-                    <i class="fas fa-undo me-2"></i>Procesar Devolución
-                </h4>
-            </div>
-            <div class="card-body">
-                <!-- Búsqueda de Renta Activa -->
-                <div class="row mb-4">
-                    <div class="col-md-8">
-                        <label for="rental_search" class="form-label">Buscar Renta Activa</label>
-                        <input type="text" 
-                               class="form-control" 
-                               id="rental_search" 
-                               placeholder="ID de renta, nombre del cliente o título de la película..."
-                               autocomplete="off">
-                        <div class="form-text">Escriba al menos 2 caracteres para buscar rentas activas.</div>
-                    </div>
-                    <div class="col-md-4 d-flex align-items-end">
-                        <button type="button" class="btn btn-outline-secondary w-100" id="clear_search">
-                            <i class="fas fa-eraser me-1"></i>Limpiar Búsqueda
-                        </button>
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <h2><i class="fas fa-undo"></i> Procesar Devoluciones</h2>
+            <p class="text-muted">Gestionar devoluciones de películas rentadas</p>
+        </div>
+        <div class="col-md-6 text-end">
+            <a href="{{ route('rentals.return.history') }}" class="btn btn-outline-info">
+                <i class="fas fa-history"></i> Ver Historial
+            </a>
+            <a href="{{ route('rentals.index') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Volver
+            </a>
+        </div>
+    </div>
+
+    <!-- Estadísticas -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h3 class="card-title">{{ number_format($stats['pending_returns']) }}</h3>
+                            <p class="card-text">Pendientes de Devolución</p>
+                        </div>
+                        <i class="fas fa-clock fa-2x opacity-75"></i>
                     </div>
                 </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h3 class="card-title">{{ number_format($stats['overdue_returns']) }}</h3>
+                            <p class="card-text">Atrasadas</p>
+                        </div>
+                        <i class="fas fa-exclamation-triangle fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h3 class="card-title">{{ number_format($stats['returns_today']) }}</h3>
+                            <p class="card-text">Devueltas Hoy</p>
+                        </div>
+                        <i class="fas fa-check-circle fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h3 class="card-title">${{ number_format($stats['total_revenue_pending'], 2) }}</h3>
+                            <p class="card-text">Ingresos Pendientes</p>
+                        </div>
+                        <i class="fas fa-dollar-sign fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                <!-- Resultados de Búsqueda -->
-                <div id="search_results">
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Cliente</th>
-                                    <th>Película</th>
-                                    <th>Fecha Renta</th>
-                                    <th>Debe Devolver</th>
-                                    <th>Estado</th>
-                                    <th>Acción</th>
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-filter"></i> Filtros de Búsqueda</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" action="{{ route('rentals.return.index') }}">
+                <div class="row">
+                    <div class="col-md-4">
+                        <label for="customer_search" class="form-label">Cliente</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="customer_search" 
+                               name="customer_search" 
+                               value="{{ request('customer_search') }}"
+                               placeholder="Buscar por nombre, apellido o email...">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="film_search" class="form-label">Película</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="film_search" 
+                               name="film_search" 
+                               value="{{ request('film_search') }}"
+                               placeholder="Buscar por título de película...">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="status" class="form-label">Estado</label>
+                        <select class="form-select" id="status" name="status">
+                            <option value="">Todas</option>
+                            <option value="overdue" {{ request('status') == 'overdue' ? 'selected' : '' }}>Atrasadas</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="fas fa-search"></i> Buscar
+                        </button>
+                        <a href="{{ route('rentals.return.index') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times"></i>
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabla de Rentas Pendientes -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-list"></i> Rentas Pendientes de Devolución</h5>
+            <span class="badge bg-secondary">{{ $activeRentals->total() }} registros</span>
+        </div>
+        <div class="card-body p-0">
+            @if($activeRentals->count() > 0)
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>ID</th>
+                                <th>Cliente</th>
+                                <th>Película</th>
+                                <th>Fecha Renta</th>
+                                <th>Fecha Esperada</th>
+                                <th>Estado</th>
+                                <th>Empleado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($activeRentals as $rental)
+                                @php
+                                    $isOverdue = $rental->isOverdue();
+                                    $daysOverdue = $isOverdue ? $rental->daysOverdue() : 0;
+                                @endphp
+                                <tr class="{{ $isOverdue ? 'table-warning' : '' }}">
+                                    <td>
+                                        <strong>#{{ $rental->rental_id }}</strong>
+                                    </td>
+                                    <td>
+                                        <div>
+                                            <strong>{{ $rental->customer ? $rental->customer->full_name : 'Cliente no encontrado' }}</strong>
+                                            <br>
+                                            <small class="text-muted">{{ $rental->customer ? $rental->customer->email : 'N/A' }}</small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div>
+                                            <strong>{{ $rental->inventory->film->title ?? 'N/A' }}</strong>
+                                            <br>
+                                            <small class="text-muted">
+                                                Duración: {{ $rental->inventory->film->rental_duration ?? 'N/A' }} días
+                                            </small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div>
+                                            {{ $rental->rental_date->format('d/m/Y') }}
+                                            <br>
+                                            <small class="text-muted">{{ $rental->rental_date->format('H:i') }}</small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div>
+                                            {{ $rental->expected_return_date->format('d/m/Y') }}
+                                            <br>
+                                            <small class="text-muted">{{ $rental->expected_return_date->format('H:i') }}</small>
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        @if($isOverdue)
+                                            <span class="badge bg-danger">
+                                                <i class="fas fa-exclamation-triangle"></i> 
+                                                Atrasada {{ $daysOverdue }} días
+                                            </span>
+                                        @else
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-clock"></i> A tiempo
+                                            </span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        <div>
+                                            {{ $rental->staff->first_name ?? 'N/A' }} {{ $rental->staff->last_name ?? '' }}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <a href="{{ route('rentals.return.show', $rental->rental_id) }}" 
+                                               class="btn btn-sm btn-primary"
+                                               title="Procesar Devolución">
+                                                <i class="fas fa-undo"></i> Devolver
+                                            </a>
+                                            <a href="{{ route('rentals.show', $rental->rental_id) }}" 
+                                               class="btn btn-sm btn-outline-secondary"
+                                               title="Ver Detalles">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Paginación -->
+                <div class="card-footer">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <small class="text-muted">
+                                Mostrando {{ $activeRentals->firstItem() }} a {{ $activeRentals->lastItem() }} 
+                                de {{ $activeRentals->total() }} registros
+                            </small>
+                        </div>
+                        <div>
+                            {{ $activeRentals->appends(request()->query())->links() }}
+                        </div>
+                    </div>
+                </div>
+            @else
+                <div class="text-center py-5">
+                    <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                    <h5 class="text-muted">No hay rentas pendientes de devolución</h5>
+                    <p class="text-muted">
+                        @if(request()->hasAny(['customer_search', 'film_search', 'status']))
+                            No hay rentas que coincidan con los filtros aplicados.
+                        @else
+                            ¡Excelente! Todas las rentas han sido devueltas.
+                        @endif
+                    </p>
+                    @if(request()->hasAny(['customer_search', 'film_search', 'status']))
+                        <a href="{{ route('rentals.return.index') }}" class="btn btn-outline-primary">
+                            <i class="fas fa-times"></i> Limpiar Filtros
+                        </a>
+                    @endif
+                </div>
+            @endif
+        </div>
+    </div>
+</div>
+
+@push('scripts')
+<script>
+    // Auto-submit del formulario cuando se cambia el estado
+    document.getElementById('status').addEventListener('change', function() {
+        document.querySelector('form').submit();
+    });
+</script>
+@endpush
+@endsection
                                 </tr>
                             </thead>
                             <tbody id="rentals_tbody">
@@ -50,10 +273,10 @@
                                     @foreach($activeRentals as $rental)
                                         <tr class="rental-row" data-rental-id="{{ $rental->rental_id }}">
                                             <td><strong>{{ $rental->rental_id }}</strong></td>
-                                            <td>{{ $rental->customer->formatted_name }}</td>
-                                            <td>{{ $rental->inventory->film->title }}</td>
+                                            <td>{{ $rental->customer ? $rental->customer->formatted_name : 'Cliente no encontrado' }}</td>
+                                            <td>{{ $rental->inventory && $rental->inventory->film ? $rental->inventory->film->title : 'Película no encontrada' }}</td>
                                             <td>{{ $rental->rental_date->format('d/m/Y H:i') }}</td>
-                                            <td>{{ $rental->expected_return_date->format('d/m/Y') }}</td>
+                                            <td>{{ $rental->expected_return_date ? $rental->expected_return_date->format('d/m/Y') : 'N/A' }}</td>
                                             <td>
                                                 @if($rental->isOverdue())
                                                     <span class="badge bg-danger">
@@ -209,7 +432,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function searchRentals(query) {
-        fetch(`{{ route('rentals.return') }}?search=${encodeURIComponent(query)}`, {
+        fetch(`{{ route('rentals.return.index') }}?search=${encodeURIComponent(query)}`, {
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
             }
@@ -229,7 +452,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function loadAllRentals() {
-        fetch(`{{ route('rentals.return') }}`, {
+        fetch(`{{ route('rentals.return.index') }}`, {
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
             }
@@ -293,4 +516,3 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 @endpush
-@endsection

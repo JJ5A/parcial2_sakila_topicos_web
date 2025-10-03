@@ -17,11 +17,21 @@ class FilmController extends Controller
      */
     public function available(Request $request): View
     {
-        $query = Film::with(['language', 'originalLanguage']);
+        $query = Film::with(['language', 'originalLanguage', 'categories'])
+            ->whereHas('inventory', function($q) {
+                // Solo películas que tienen inventario
+                $q->whereNotExists(function($subQuery) {
+                    $subQuery->select(DB::raw(1))
+                        ->from('rental')
+                        ->whereRaw('rental.inventory_id = inventory.inventory_id')
+                        ->whereNull('return_date');
+                });
+            });
         
         // Búsqueda por título
         if ($request->filled('search')) {
-            $query->where('title', 'like', '%' . $request->search . '%');
+            $searchTerm = $request->search;
+            $query->where('title', 'LIKE', "%{$searchTerm}%");
         }
         
         // Filtro por rating
@@ -36,11 +46,39 @@ class FilmController extends Controller
             });
         }
         
-        // Obtener todas las películas
-        $allFilms = $query->orderBy('title')->get();
+        // Filtro por rango de precio
+        if ($request->filled('price_min')) {
+            $query->where('rental_rate', '>=', $request->price_min);
+        }
+        if ($request->filled('price_max')) {
+            $query->where('rental_rate', '<=', $request->price_max);
+        }
         
-        // Filtrar solo las que tienen inventario disponible
-        $films = $allFilms->map(function($film) {
+        // Ordenamiento
+        $sortBy = $request->get('sort', 'title');
+        $sortDirection = $request->get('direction', 'asc');
+        
+        if (in_array($sortBy, ['title', 'release_year', 'rental_rate', 'length', 'rating'])) {
+            if ($sortBy === 'title') {
+                $query->orderBy('title', $sortDirection);
+            } elseif ($sortBy === 'release_year') {
+                $query->orderBy('release_year', $sortDirection)->orderBy('title', 'asc');
+            } elseif ($sortBy === 'rental_rate') {
+                $query->orderBy('rental_rate', $sortDirection)->orderBy('title', 'asc');
+            } elseif ($sortBy === 'length') {
+                $query->orderBy('length', $sortDirection)->orderBy('title', 'asc');
+            } elseif ($sortBy === 'rating') {
+                $query->orderBy('rating', $sortDirection)->orderBy('title', 'asc');
+            }
+        } else {
+            $query->orderBy('title', 'asc');
+        }
+        
+        // Paginación con parámetros de búsqueda
+        $films = $query->paginate(16)->appends($request->all());
+        
+        // Agregar información de disponibilidad a cada película
+        $films->getCollection()->transform(function($film) {
             $totalCopies = Inventory::where('film_id', $film->film_id)->count();
             $rentedCopies = DB::table('rental')
                 ->join('inventory', 'rental.inventory_id', '=', 'inventory.inventory_id')
@@ -48,21 +86,21 @@ class FilmController extends Controller
                 ->whereNull('rental.return_date')
                 ->count();
             
-            $availableCopies = $totalCopies - $rentedCopies;
-            
-            $film->available_copies = $availableCopies;
+            $film->available_copies = $totalCopies - $rentedCopies;
             $film->total_copies = $totalCopies;
             
             return $film;
-        })->filter(function($film) {
-            return $film->total_copies > 0 && $film->available_copies > 0;
         });
         
         // Datos para filtros
         $ratings = Film::getRatings();
         $categories = DB::table('category')->orderBy('name')->get();
         
-        return view('films.available', compact('films', 'ratings', 'categories'));
+        // Estadísticas
+        $totalAvailable = $films->total();
+        $totalFilms = Film::count();
+        
+        return view('films.available', compact('films', 'ratings', 'categories', 'totalAvailable', 'totalFilms'));
     }
 
     /**
@@ -74,7 +112,8 @@ class FilmController extends Controller
         
         // Búsqueda por título
         if ($request->filled('search')) {
-            $query->where('title', 'like', '%' . $request->search . '%');
+            $searchTerm = $request->search;
+            $query->where('title', 'LIKE', "%{$searchTerm}%");
         }
         
         // Filtro por rating
@@ -87,7 +126,26 @@ class FilmController extends Controller
             $query->where('release_year', $request->year);
         }
         
-        $films = $query->orderBy('title')->simplePaginate(12);
+        // Ordenamiento
+        $sortBy = $request->get('sort', 'title');
+        $sortDirection = $request->get('direction', 'asc');
+        
+        if (in_array($sortBy, ['title', 'release_year', 'rental_rate', 'length', 'rating'])) {
+            if ($sortBy === 'title') {
+                $query->orderBy('title', $sortDirection);
+            } elseif ($sortBy === 'release_year') {
+                $query->orderBy('release_year', $sortDirection)->orderBy('title', 'asc');
+            } elseif ($sortBy === 'rental_rate') {
+                $query->orderBy('rental_rate', $sortDirection)->orderBy('title', 'asc');
+            } elseif ($sortBy === 'length') {
+                $query->orderBy('length', $sortDirection)->orderBy('title', 'asc');
+            }
+        } else {
+            $query->orderBy('title', 'asc');
+        }
+        
+        // Paginación con parámetros de búsqueda
+        $films = $query->paginate(12)->appends($request->all());
         
         // Datos para filtros
         $ratings = Film::getRatings();
@@ -96,7 +154,11 @@ class FilmController extends Controller
                     ->orderBy('release_year', 'desc')
                     ->pluck('release_year');
         
-        return view('films.index', compact('films', 'ratings', 'years'));
+        // Estadísticas
+        $totalFilms = Film::count();
+        $filteredCount = $films->total();
+        
+        return view('films.index', compact('films', 'ratings', 'years', 'totalFilms', 'filteredCount'));
     }
 
     /**
@@ -208,5 +270,66 @@ class FilmController extends Controller
 
         return redirect()->route('films.index')
                          ->with('success', 'Película eliminada exitosamente.');
+    }
+
+    /**
+     * Search available films for AJAX requests
+     */
+    public function searchAvailable(Request $request)
+    {
+        if (!$request->has('q')) {
+            return response()->json(['films' => []]);
+        }
+
+        $searchTerm = $request->q;
+        
+        $films = Film::with(['language'])
+            ->whereHas('inventory', function($q) {
+                // Solo películas que tienen inventario disponible
+                $q->whereNotExists(function($subQuery) {
+                    $subQuery->select(DB::raw(1))
+                        ->from('rental')
+                        ->whereRaw('rental.inventory_id = inventory.inventory_id')
+                        ->whereNull('return_date');
+                });
+            })
+            ->where('title', 'LIKE', "%{$searchTerm}%")
+            ->limit(10)
+            ->get()
+            ->map(function($film) {
+                // Obtener inventario disponible por tienda
+                $availableInventory = DB::table('inventory')
+                    ->where('film_id', $film->film_id)
+                    ->whereNotExists(function($subQuery) {
+                        $subQuery->select(DB::raw(1))
+                            ->from('rental')
+                            ->whereRaw('rental.inventory_id = inventory.inventory_id')
+                            ->whereNull('return_date');
+                    })
+                    ->get();
+
+                $totalAvailable = $availableInventory->count();
+                $storeAvailability = $availableInventory->groupBy('store_id');
+                
+                // Seleccionar el primer inventario disponible
+                $firstAvailable = $availableInventory->first();
+                
+                return [
+                    'inventory_id' => $firstAvailable ? $firstAvailable->inventory_id : null,
+                    'film_id' => $film->film_id,
+                    'title' => $film->title,
+                    'rating' => $film->rating,
+                    'rental_rate' => $film->rental_rate,
+                    'rental_duration' => $film->rental_duration,
+                    'available_copies' => $totalAvailable,
+                    'store_id' => $firstAvailable ? $firstAvailable->store_id : null,
+                    'language' => $film->language->name ?? 'N/A'
+                ];
+            })
+            ->filter(function($film) {
+                return $film['inventory_id'] !== null;
+            });
+
+        return response()->json(['films' => $films->values()]);
     }
 }

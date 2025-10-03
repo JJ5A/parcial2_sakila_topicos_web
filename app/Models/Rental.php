@@ -22,13 +22,10 @@ class Rental extends Model
         'staff_id'
     ];
     
-    protected $dates = [
-        'rental_date',
-        'return_date',
-        'last_update'
-    ];    protected $casts = [
+    protected $casts = [
         'rental_date' => 'datetime',
         'return_date' => 'datetime',
+        'last_update' => 'datetime',
         'customer_id' => 'integer',
         'inventory_id' => 'integer',
         'staff_id' => 'integer'
@@ -83,6 +80,11 @@ class Rental extends Model
             return false;
         }
         
+        // Verificar que el inventory y film existen
+        if (!$this->inventory || !$this->inventory->film) {
+            return false;
+        }
+        
         $rentalDuration = $this->inventory->film->rental_duration;
         $dueDate = $this->rental_date->addDays($rentalDuration);
         
@@ -98,6 +100,11 @@ class Rental extends Model
             return 0;
         }
         
+        // Verificar que el inventory y film existen
+        if (!$this->inventory || !$this->inventory->film) {
+            return 0;
+        }
+        
         $rentalDuration = $this->inventory->film->rental_duration;
         $dueDate = $this->rental_date->copy()->addDays($rentalDuration);
         
@@ -109,8 +116,13 @@ class Rental extends Model
      */
     public function getDueDateAttribute()
     {
+        // Verificar que el inventory y film existen
+        if (!$this->inventory || !$this->inventory->film) {
+            return $this->rental_date->copy()->addDays(3); // Default 3 días
+        }
+        
         $rentalDuration = $this->inventory->film->rental_duration ?? 3;
-        return $this->rental_date->addDays($rentalDuration);
+        return $this->rental_date->copy()->addDays($rentalDuration);
     }
 
     /**
@@ -118,6 +130,11 @@ class Rental extends Model
      */
     public function getExpectedReturnDateAttribute()
     {
+        // Verificar que el inventory y film existen
+        if (!$this->inventory || !$this->inventory->film) {
+            return $this->rental_date->copy()->addDays(3); // Default 3 días
+        }
+        
         $rentalDuration = $this->inventory->film->rental_duration ?? 3;
         return $this->rental_date->copy()->addDays($rentalDuration);
     }

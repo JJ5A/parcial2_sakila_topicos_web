@@ -5,8 +5,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'Sakila - Sistema de Rentas')</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Scripts -->
+    @vite(['resources/sass/app.scss', 'resources/js/app.js'])
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        /* Asegurar que la navbar esté en la parte superior */
+        .navbar {
+            z-index: 1030;
+            position: fixed;
+            top: 0;
+            width: 100%;
+        }
+        
+        /* Evitar que el contenido se sobreponga con la navbar */
+        body {
+            padding-top: 76px; /* Altura aproximada de la navbar */
+        }
+        
+        /* Dropdown styles for search */
+        .search-dropdown {
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 1050;
+        }
+        
+        .dropdown-item:hover {
+            background-color: #f8f9fa;
+        }
+    </style>
     @stack('styles')
 </head>
 <body>
@@ -33,8 +63,11 @@
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="{{ route('rentals.create') }}"><i class="fas fa-plus me-2"></i>Nueva Renta</a></li>
                             <li><a class="dropdown-item" href="{{ route('rentals.active') }}"><i class="fas fa-play me-2"></i>Rentas Activas</a></li>
-                            <li><a class="dropdown-item" href="{{ route('rentals.return') }}"><i class="fas fa-undo me-2"></i>Procesar Devolución</a></li>
                             <li><a class="dropdown-item" href="{{ route('rentals.overdue') }}"><i class="fas fa-exclamation-triangle me-2"></i>Rentas Atrasadas</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header">Devoluciones</h6></li>
+                            <li><a class="dropdown-item" href="{{ route('rentals.return.index') }}"><i class="fas fa-undo me-2"></i>Procesar Devoluciones</a></li>
+                            <li><a class="dropdown-item" href="{{ route('rentals.return.history') }}"><i class="fas fa-history me-2"></i>Historial de Devoluciones</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -128,7 +161,6 @@
         @yield('content')
     </main>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     @stack('scripts')
 </body>
 </html>

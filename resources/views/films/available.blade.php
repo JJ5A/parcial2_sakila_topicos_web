@@ -25,21 +25,34 @@
     <div class="row mb-4">
         <div class="col-12">
             <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-filter me-2"></i>Filtros de Búsqueda
+                        @if(isset($totalAvailable))
+                            <small class="text-muted">({{ $totalAvailable }} de {{ $totalFilms }} películas disponibles)</small>
+                        @endif
+                    </h6>
+                </div>
                 <div class="card-body">
                     <form method="GET" action="{{ route('films.available') }}" class="row g-3">
-                        <div class="col-md-4">
-                            <label for="search" class="form-label">Buscar película</label>
-                            <input type="text" 
-                                   class="form-control" 
-                                   id="search" 
-                                   name="search" 
-                                   value="{{ request('search') }}" 
-                                   placeholder="Título de la película...">
-                        </div>
                         <div class="col-md-3">
+                            <label for="search" class="form-label">Buscar película</label>
+                            <div class="input-group">
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="search" 
+                                       name="search" 
+                                       value="{{ request('search') }}" 
+                                       placeholder="Título de la película...">
+                                <button class="btn btn-outline-secondary" type="submit">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
                             <label for="rating" class="form-label">Clasificación</label>
-                            <select class="form-select" id="rating" name="rating">
-                                <option value="">Todas las clasificaciones</option>
+                            <select class="form-select" id="rating" name="rating" onchange="this.form.submit()">
+                                <option value="">Todas</option>
                                 @foreach($ratings as $value => $label)
                                     <option value="{{ $value }}" {{ request('rating') == $value ? 'selected' : '' }}>
                                         {{ $label }}
@@ -47,10 +60,10 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label for="category" class="form-label">Categoría</label>
-                            <select class="form-select" id="category" name="category">
-                                <option value="">Todas las categorías</option>
+                            <select class="form-select" id="category" name="category" onchange="this.form.submit()">
+                                <option value="">Todas</option>
                                 @foreach($categories as $category)
                                     <option value="{{ $category->category_id }}" {{ request('category') == $category->category_id ? 'selected' : '' }}>
                                         {{ $category->name }}
@@ -58,14 +71,36 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div class="col-md-2 d-flex align-items-end">
-                            <button type="submit" class="btn btn-primary me-2">
-                                <i class="fas fa-search"></i> Buscar
-                            </button>
-                            <a href="{{ route('films.available') }}" class="btn btn-outline-secondary">
-                                <i class="fas fa-times"></i>
-                            </a>
+                        <div class="col-md-2">
+                            <label for="sort" class="form-label">Ordenar por</label>
+                            <select class="form-select" id="sort" name="sort" onchange="this.form.submit()">
+                                <option value="title" {{ request('sort') == 'title' ? 'selected' : '' }}>Título</option>
+                                <option value="release_year" {{ request('sort') == 'release_year' ? 'selected' : '' }}>Año</option>
+                                <option value="rental_rate" {{ request('sort') == 'rental_rate' ? 'selected' : '' }}>Precio</option>
+                                <option value="length" {{ request('sort') == 'length' ? 'selected' : '' }}>Duración</option>
+                                <option value="rating" {{ request('sort') == 'rating' ? 'selected' : '' }}>Rating</option>
+                            </select>
                         </div>
+                        <div class="col-md-2">
+                            <label for="direction" class="form-label">Orden</label>
+                            <select class="form-select" id="direction" name="direction" onchange="this.form.submit()">
+                                <option value="asc" {{ request('direction') == 'asc' ? 'selected' : '' }}>Ascendente</option>
+                                <option value="desc" {{ request('direction') == 'desc' ? 'selected' : '' }}>Descendente</option>
+                            </select>
+                        </div>
+                        <div class="col-md-1 d-flex align-items-end">
+                            @if(request()->hasAny(['search', 'rating', 'category', 'sort', 'direction']))
+                                <a href="{{ route('films.available') }}" class="btn btn-outline-danger" title="Limpiar filtros">
+                                    <i class="fas fa-times"></i>
+                                </a>
+                            @endif
+                        </div>
+                        <!-- Campos ocultos para mantener parámetros -->
+                        @foreach(['search', 'rating', 'category'] as $field)
+                            @if(request($field))
+                                <input type="hidden" name="{{ $field }}" value="{{ request($field) }}">
+                            @endif
+                        @endforeach
                     </form>
                 </div>
             </div>
@@ -78,7 +113,19 @@
             <div class="d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">
                     <i class="fas fa-film text-primary"></i> 
-                    {{ $films->count() }} película(s) disponible(s)
+                    {{ $films->total() }} película(s) disponible(s)
+                    @if(request()->hasAny(['search', 'rating', 'category']))
+                        <small class="text-muted">
+                            (filtrado
+                            @if(request('search')) por "{{ request('search') }}" @endif
+                            @if(request('rating')) - rating: {{ $ratings[request('rating')] ?? request('rating') }} @endif
+                            @if(request('category')) - categoría @endif
+                            )
+                        </small>
+                    @endif
+                    @if($films->hasPages())
+                        <small class="text-muted">| Página {{ $films->currentPage() }} de {{ $films->lastPage() }}</small>
+                    @endif
                 </h5>
                 <div class="btn-group" role="group">
                     <button type="button" class="btn btn-outline-secondary btn-sm active" id="grid-view">
@@ -105,7 +152,13 @@
                             </div>
                         </div>
                         <div class="card-body d-flex flex-column">
-                            <h6 class="card-title">{{ $film->title }}</h6>
+                            <h6 class="card-title">
+                                @if(request('search'))
+                                    {!! preg_replace('/(' . preg_quote(request('search'), '/') . ')/i', '<span class="search-highlight">$1</span>', e($film->title)) !!}
+                                @else
+                                    {{ $film->title }}
+                                @endif
+                            </h6>
                             <p class="card-text text-muted small flex-grow-1">
                                 {{ Str::limit($film->description, 80) }}
                             </p>
@@ -189,6 +242,63 @@
                 </div>
             @endforelse
         </div>
+        
+        <!-- Navegación de Películas -->
+        @if($films->hasPages())
+            <div class="d-flex justify-content-between align-items-center mt-4">
+                <div class="text-muted">
+                    Mostrando {{ $films->firstItem() ?? 0 }} - {{ $films->lastItem() ?? 0 }} de {{ $films->total() }} películas disponibles
+                    @if(request('search'))
+                        <br><small class="text-primary">Filtrado por: "{{ request('search') }}"</small>
+                    @endif
+                    @if(request('rating'))
+                        <br><small class="text-primary">Rating: {{ $ratings[request('rating')] ?? request('rating') }}</small>
+                    @endif
+                    @if(request('category'))
+                        @php
+                            $categoryName = $categories->where('category_id', request('category'))->first()->name ?? 'Desconocida';
+                        @endphp
+                        <br><small class="text-primary">Categoría: {{ $categoryName }}</small>
+                    @endif
+                    <br><small class="text-muted">Página {{ $films->currentPage() }} de {{ $films->lastPage() }}</small>
+                </div>
+                <div class="navigation-controls">
+                    <div class="d-flex align-items-center gap-3">
+                        <!-- Botón Anterior -->
+                        @if($films->onFirstPage())
+                            <button class="btn btn-outline-secondary" disabled>
+                                <i class="fas fa-chevron-left me-1"></i>Anterior
+                            </button>
+                        @else
+                            <a href="{{ $films->previousPageUrl() }}" class="btn btn-outline-primary">
+                                <i class="fas fa-chevron-left me-1"></i>Anterior
+                            </a>
+                        @endif
+                        
+                        <!-- Información de página -->
+                        <div class="page-info bg-light px-3 py-1 rounded">
+                            <small class="text-muted">{{ $films->currentPage() }} / {{ $films->lastPage() }}</small>
+                        </div>
+                        
+                        <!-- Botón Siguiente -->
+                        @if($films->hasMorePages())
+                            <a href="{{ $films->nextPageUrl() }}" class="btn btn-primary">
+                                Siguiente<i class="fas fa-chevron-right ms-1"></i>
+                            </a>
+                        @else
+                            <button class="btn btn-outline-secondary" disabled>
+                                Siguiente<i class="fas fa-chevron-right ms-1"></i>
+                            </button>
+                        @endif
+                    </div>
+                    
+                    <!-- Paginación completa más pequeña -->
+                    <div class="mt-2">
+                        {{ $films->withQueryString()->links() }}
+                    </div>
+                </div>
+            </div>
+        @endif
     </div>
 
     <!-- Vista Lista -->
@@ -213,7 +323,13 @@
                             <tr>
                                 <td>
                                     <div>
-                                        <strong>{{ $film->title }}</strong>
+                                        <strong>
+                                            @if(request('search'))
+                                                {!! preg_replace('/(' . preg_quote(request('search'), '/') . ')/i', '<span class="search-highlight">$1</span>', e($film->title)) !!}
+                                            @else
+                                                {{ $film->title }}
+                                            @endif
+                                        </strong>
                                         @if($film->language)
                                             <br><small class="text-muted">{{ $film->language->name }}</small>
                                         @endif
@@ -254,16 +370,83 @@
 
 <style>
 .film-card {
-    transition: transform 0.2s;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
 
 .film-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
 }
 
 .bg-gradient-primary {
     background: linear-gradient(45deg, #007bff, #6610f2);
+}
+
+/* Estilo para resaltar resultados de búsqueda */
+.search-highlight {
+    background-color: #fff3cd;
+    padding: 1px 3px;
+    border-radius: 3px;
+    font-weight: 500;
+}
+
+/* Estilos de paginación */
+.pagination-wrapper .pagination {
+    margin: 0;
+    font-size: 0.875rem;
+}
+
+.pagination-wrapper .page-link {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.85rem;
+    border-radius: 0.375rem;
+    text-align: center;
+    line-height: 1.5;
+    font-weight: 500;
+    border: 1px solid #dee2e6;
+    margin: 0 0.125rem;
+}
+
+.pagination-wrapper .page-link:hover {
+    background-color: #e3f2fd;
+    border-color: #90caf9;
+    color: #1976d2;
+    text-decoration: none;
+}
+
+.pagination-wrapper .page-item.active .page-link {
+    background-color: #1976d2;
+    border-color: #1976d2;
+    color: white;
+    font-weight: 600;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .col-xl-3 {
+        margin-bottom: 1rem;
+    }
+    
+    .navigation-controls {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .navigation-controls .d-flex {
+        justify-content: center;
+    }
+}
+
+/* Mejoras visuales para filtros */
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.btn-group .btn.active {
+    background-color: #007bff;
+    border-color: #007bff;
+    color: white;
 }
 </style>
 
@@ -273,12 +456,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const listView = document.getElementById('list-view');
     const gridContainer = document.getElementById('grid-container');
     const listContainer = document.getElementById('list-container');
+    const searchInput = document.querySelector('input[name="search"]');
+    const searchForm = document.querySelector('form');
 
+    // Toggle between grid and list view
     gridView.addEventListener('click', function() {
         gridView.classList.add('active');
         listView.classList.remove('active');
         gridContainer.style.display = 'block';
         listContainer.style.display = 'none';
+        localStorage.setItem('filmViewMode', 'grid');
     });
 
     listView.addEventListener('click', function() {
@@ -286,6 +473,38 @@ document.addEventListener('DOMContentLoaded', function() {
         gridView.classList.remove('active');
         gridContainer.style.display = 'none';
         listContainer.style.display = 'block';
+        localStorage.setItem('filmViewMode', 'list');
+    });
+
+    // Restore view mode from localStorage
+    const savedViewMode = localStorage.getItem('filmViewMode');
+    if (savedViewMode === 'list') {
+        listView.click();
+    }
+
+    // Manual search - submit only on Enter
+    if (searchInput) {
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchForm.submit();
+            }
+        });
+    }
+
+    // Auto-focus on search field if no results
+    @if(request('search') && $films->count() === 0)
+        if (searchInput) {
+            searchInput.focus();
+            searchInput.select();
+        }
+    @endif
+
+    // Smooth scroll to top when changing pages
+    const pageLinks = document.querySelectorAll('.pagination a, .btn[href*="page="]');
+    pageLinks.forEach(link => {
+        link.addEventListener('click', function() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
     });
 });
 </script>

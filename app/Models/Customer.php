@@ -24,14 +24,11 @@ class Customer extends Model
         'last_update'
     ];
     
-    protected $dates = [
-        'create_date',
-        'last_update'
-    ];
-    
     protected $casts = [
         'active' => 'boolean',
-        'customer_id' => 'integer'
+        'customer_id' => 'integer',
+        'create_date' => 'datetime',
+        'last_update' => 'datetime'
     ];
     
     /**

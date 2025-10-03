@@ -93,27 +93,131 @@ class RentalController extends Controller
      */
     public function create(): View
     {
+        // Cargar datos básicos para el formulario
         $customers = Customer::where('active', true)->orderBy('last_name')->get();
         $staff = Staff::where('active', true)->orderBy('first_name')->get();
         
-        // Obtener inventario disponible con películas
-        $available_films = Inventory::with('film')
-            ->available()
+        // Obtener películas disponibles para mostrar en lista
+        $availableFilms = Film::with(['language', 'categories'])
+            ->whereHas('inventory', function($q) {
+                // Solo películas que tienen inventario disponible
+                $q->whereNotExists(function($subQuery) {
+                    $subQuery->select(DB::raw(1))
+                        ->from('rental')
+                        ->whereRaw('rental.inventory_id = inventory.inventory_id')
+                        ->whereNull('return_date');
+                });
+            })
+            ->orderBy('title')
+            ->limit(24) // Mostrar las primeras 24 películas
             ->get()
-            ->groupBy('film_id')
-            ->map(function($group) {
-                $inventory = $group->first();
-                return [
-                    'film_id' => $inventory->film_id,
-                    'title' => $inventory->film->title,
-                    'rental_rate' => '$' . number_format($inventory->film->rental_rate, 2),
-                    'rental_duration' => $inventory->film->rental_duration,
-                    'available_copies' => $group->count(),
-                    'inventory_items' => $group->pluck('inventory_id', 'store_id')
-                ];
-            })->values();
+            ->map(function($film) {
+                // Obtener inventario disponible por tienda
+                $availableInventory = DB::table('inventory')
+                    ->where('film_id', $film->film_id)
+                    ->whereNotExists(function($subQuery) {
+                        $subQuery->select(DB::raw(1))
+                            ->from('rental')
+                            ->whereRaw('rental.inventory_id = inventory.inventory_id')
+                            ->whereNull('return_date');
+                    })
+                    ->get();
+
+                $totalAvailable = $availableInventory->count();
+                $storeAvailability = $availableInventory->groupBy('store_id');
+                
+                $film->available_copies = $totalAvailable;
+                $film->available_by_store = $storeAvailability;
+                
+                return $film;
+            })
+            ->filter(function($film) {
+                return $film->available_copies > 0;
+            });
         
-        return view('rentals.create', compact('customers', 'staff', 'available_films'));
+        return view('rentals.create', compact('customers', 'staff', 'availableFilms'));
+    }
+
+    /**
+     * Buscar clientes por AJAX
+     */
+    public function searchCustomers(Request $request)
+    {
+        $search = $request->get('search', '');
+        
+        if (strlen($search) < 2) {
+            return response()->json([]);
+        }
+
+        $customers = Customer::where('active', true)
+            ->where(function($query) use ($search) {
+                $query->where('first_name', 'like', "%{$search}%")
+                      ->orWhere('last_name', 'like', "%{$search}%")
+                      ->orWhere('email', 'like', "%{$search}%")
+                      ->orWhereRaw("CONCAT(first_name, ' ', last_name) like ?", ["%{$search}%"]);
+            })
+            ->limit(10)
+            ->get();
+
+        return response()->json($customers->map(function($customer) {
+            // Verificar si tiene rentas activas o atrasadas
+            $activeRentals = $customer->rentals()->active()->count();
+            $overdueRentals = $customer->rentals()->overdue()->count();
+            
+            return [
+                'id' => $customer->customer_id,
+                'name' => $customer->full_name,
+                'email' => $customer->email,
+                'has_pending_rentals' => ($activeRentals > 0 || $overdueRentals > 0),
+                'active_rentals' => $activeRentals,
+                'overdue_rentals' => $overdueRentals,
+                'status_message' => $activeRentals > 0 || $overdueRentals > 0 
+                    ? "Tiene {$activeRentals} renta(s) activa(s) y {$overdueRentals} atrasada(s)"
+                    : 'Sin rentas pendientes'
+            ];
+        }));
+    }
+
+    /**
+     * Buscar películas disponibles por AJAX
+     */
+    public function searchFilms(Request $request)
+    {
+        $search = $request->get('search', '');
+        
+        if (strlen($search) < 2) {
+            return response()->json([]);
+        }
+
+        $films = Film::with(['inventory' => function($query) {
+                $query->available();
+            }])
+            ->where('title', 'like', "%{$search}%")
+            ->whereHas('inventory', function($query) {
+                $query->available();
+            })
+            ->limit(15)
+            ->get();
+
+        return response()->json($films->map(function($film) {
+            $availableInventory = $film->inventory->groupBy('store_id');
+            
+            return [
+                'film_id' => $film->film_id,
+                'title' => $film->title,
+                'rating' => $film->rating,
+                'rental_rate' => $film->rental_rate,
+                'rental_duration' => $film->rental_duration,
+                'total_available' => $film->inventory->count(),
+                'stores' => $availableInventory->map(function($storeInventory, $storeId) {
+                    return [
+                        'store_id' => $storeId,
+                        'count' => $storeInventory->count(),
+                        'inventory_ids' => $storeInventory->pluck('inventory_id')
+                    ];
+                })
+            ];
+        }));
     }
 
     /**
@@ -164,11 +268,38 @@ class RentalController extends Controller
         DB::beginTransaction();
 
         try {
+            // Verificar que el cliente no tenga rentas activas o atrasadas
+            $customer = Customer::findOrFail($validated['customer_id']);
+            $activeRentals = $customer->rentals()->active()->count();
+            $overdueRentals = $customer->rentals()->overdue()->count();
+            
+            if ($activeRentals > 0 || $overdueRentals > 0) {
+                $message = "El cliente {$customer->full_name} tiene ";
+                if ($overdueRentals > 0) {
+                    $message .= "{$overdueRentals} renta(s) atrasada(s)";
+                    if ($activeRentals > 0) {
+                        $message .= " y {$activeRentals} renta(s) activa(s)";
+                    }
+                } else {
+                    $message .= "{$activeRentals} renta(s) activa(s)";
+                }
+                $message .= ". Debe devolver las películas antes de rentar nuevas.";
+                
+                DB::rollBack();
+                return redirect()->back()
+                    ->withErrors(['customer_id' => $message])
+                    ->withInput()
+                    ->with('error', $message);
+            }
+
             // Verificar que el inventario esté disponible
             $inventory = Inventory::with('film')->findOrFail($validated['inventory_id']);
             
             if (!$inventory->isAvailable()) {
-                return back()->withErrors(['inventory_id' => 'Este ítem ya está rentado.']);
+                DB::rollBack();
+                return redirect()->back()
+                    ->withErrors(['inventory_id' => 'Este ítem ya está rentado.'])
+                    ->withInput();
             }
 
             // Calcular monto final
@@ -349,25 +480,24 @@ class RentalController extends Controller
     /**
      * Procesar devolución
      */
-    public function processReturn(Request $request): RedirectResponse
+    public function processReturn(Request $request, Rental $rental): RedirectResponse
     {
-        $validated = $request->validate([
-            'rental_id' => 'required|exists:rental,rental_id'
-        ]);
-
         DB::beginTransaction();
 
         try {
-            $rental = Rental::with(['inventory.film', 'customer'])->findOrFail($validated['rental_id']);
-
+            // Verificar que la renta esté activa
             if (!$rental->isActive()) {
                 return back()->withErrors(['rental_id' => 'Esta renta ya fue devuelta.']);
             }
+
+            // Cargar relaciones necesarias
+            $rental->load(['inventory.film', 'customer']);
 
             // Actualizar fecha de devolución
             $rental->update(['return_date' => now()]);
 
             // Si está atrasada, calcular multa
+            $overdueFee = 0;
             if ($rental->isOverdue()) {
                 $overdueFee = $rental->daysOverdue() * 1.50; // $1.50 por día de atraso
                 
@@ -382,9 +512,14 @@ class RentalController extends Controller
 
             DB::commit();
 
-            $message = 'Devolución procesada exitosamente.';
-            if ($rental->isOverdue()) {
-                $message .= ' Se aplicó una multa por atraso.';
+            $message = "Devolución procesada exitosamente para {$rental->customer->first_name} {$rental->customer->last_name}.";
+            if ($overdueFee > 0) {
+                $message .= " Se aplicó una multa de $" . number_format($overdueFee, 2) . " por atraso.";
+            }
+
+            // Si es devolución rápida desde rentas activas, redirigir de vuelta
+            if ($request->has('quick_return')) {
+                return redirect()->route('rentals.active')->with('success', $message);
             }
 
             return redirect()->route('rentals.show', $rental->rental_id)
@@ -483,12 +618,20 @@ class RentalController extends Controller
      */
     public function overdue(): View
     {
-        $rentals = Rental::with(['customer.address', 'inventory.film'])
+        $overdueRentals = Rental::with(['customer.address', 'inventory.film.categories', 'staff'])
             ->overdue()
             ->orderBy('rental_date')
-            ->get();
+            ->get()
+            ->map(function($rental) {
+                $rental->days_overdue = $rental->daysOverdue();
+                $rental->expected_return_date = $rental->rental_date->addDays($rental->inventory->film->rental_duration);
+                return $rental;
+            });
 
-        return view('rentals.overdue', compact('rentals'));
+        // Obtener staff para el modal de devolución
+        $staff = \App\Models\Staff::where('active', true)->get();
+
+        return view('rentals.overdue', compact('overdueRentals', 'staff'));
     }
 
     /**
@@ -513,5 +656,134 @@ class RentalController extends Controller
             ->get();
 
         return view('rentals.report', compact('reportData', 'daily_rentals', 'startDate', 'endDate'));
+    }
+
+    /**
+     * Mostrar página de devoluciones
+     */
+    public function returnIndex(Request $request): View
+    {
+        $query = Rental::with(['customer', 'inventory.film', 'staff'])
+            ->whereNull('return_date') // Solo rentas activas
+            ->whereHas('customer') // Solo rentas con cliente válido
+            ->whereHas('inventory', function($q) {
+                $q->whereHas('film'); // Solo rentas con película válida
+            });
+
+        // Filtro por cliente
+        if ($request->filled('customer_search')) {
+            $query->whereHas('customer', function($q) use ($request) {
+                $q->where('first_name', 'like', '%' . $request->customer_search . '%')
+                  ->orWhere('last_name', 'like', '%' . $request->customer_search . '%')
+                  ->orWhere('email', 'like', '%' . $request->customer_search . '%');
+            });
+        }
+
+        // Filtro por película
+        if ($request->filled('film_search')) {
+            $query->whereHas('inventory.film', function($q) use ($request) {
+                $q->where('title', 'like', '%' . $request->film_search . '%');
+            });
+        }
+
+        // Filtro por estado (atrasadas o normales)
+        if ($request->filled('status')) {
+            if ($request->status === 'overdue') {
+                $query->overdue();
+            }
+        }
+
+        $activeRentals = $query->orderBy('rental_date', 'desc')->paginate(15);
+
+        // Estadísticas de devoluciones
+        $stats = [
+            'pending_returns' => Rental::active()->count(),
+            'overdue_returns' => Rental::overdue()->count(),
+            'returns_today' => Rental::whereDate('return_date', today())->count(),
+            'total_revenue_pending' => Rental::active()
+                ->with('inventory.film')
+                ->get()
+                ->sum(function($rental) {
+                    return $rental->inventory && $rental->inventory->film 
+                        ? $rental->inventory->film->rental_rate 
+                        : 0;
+                })
+        ];
+
+        // Obtener lista de empleados para el formulario
+        $staff = Staff::where('active', true)->get();
+
+        return view('rentals.return-clean', compact('activeRentals', 'stats', 'staff'));
+    }
+
+    /**
+     * Mostrar formulario para devolver una renta específica
+     */
+    public function showReturn(Rental $rental): View
+    {
+        if ($rental->return_date) {
+            return redirect()->route('rentals.return.index')
+                ->with('error', 'Esta renta ya ha sido devuelta.');
+        }
+
+        $rental->load(['customer', 'inventory.film', 'staff']);
+
+        // Calcular multa si está atrasada
+        $lateFee = 0;
+        if ($rental->isOverdue()) {
+            $daysOverdue = $rental->daysOverdue();
+            $lateFee = $daysOverdue * 1.50; // $1.50 por día de atraso
+        }
+
+        return view('rentals.return-form', compact('rental', 'lateFee'));
+    }
+
+    /**
+     * Mostrar historial de devoluciones
+     */
+    public function returnHistory(Request $request): View
+    {
+        $query = Rental::with(['customer', 'inventory.film', 'staff'])
+            ->whereNotNull('return_date') // Solo rentas devueltas
+            ->whereHas('customer')
+            ->whereHas('inventory.film');
+
+        // Filtros
+        if ($request->filled('customer_search')) {
+            $query->whereHas('customer', function($q) use ($request) {
+                $q->where('first_name', 'like', '%' . $request->customer_search . '%')
+                  ->orWhere('last_name', 'like', '%' . $request->customer_search . '%');
+            });
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('return_date', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('return_date', '<=', $request->date_to);
+        }
+
+        $returns = $query->orderBy('return_date', 'desc')->paginate(20);
+
+        // Estadísticas del historial
+        $stats = [
+            'total_returns' => Rental::whereNotNull('return_date')->count(),
+            'returns_this_month' => Rental::whereNotNull('return_date')
+                ->whereMonth('return_date', now()->month)
+                ->whereYear('return_date', now()->year)
+                ->count(),
+            'late_returns' => Rental::whereNotNull('return_date')
+                ->get()
+                ->filter(function($rental) {
+                    return $rental->return_date > $rental->expected_return_date;
+                })
+                ->count(),
+            'revenue_late_fees' => Payment::whereHas('rental', function($q) {
+                $q->whereNotNull('return_date');
+            })->sum('amount')
+        ];
+
+        return view('rentals.return-history', compact('returns', 'stats'));
     }
 }
